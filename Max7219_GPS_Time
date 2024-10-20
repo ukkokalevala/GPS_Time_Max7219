@@ -1,0 +1,93 @@
+#include <SPI.h>
+#include <LedControl.h>
+#include <SoftwareSerial.h>
+#include <TinyGPS++.h>
+
+// Max7219 pin connections to Wemos D1 Mini
+#define DIN_PIN D7  // GPIO13
+#define CS_PIN  D6  // GPIO12
+#define CLK_PIN D5  // GPIO14
+
+// GPS module pins
+#define GPS_RX D1  // Wemos D2 -> GPS TX
+#define GPS_TX D2  // Wemos D1 -> GPS RX
+
+// Initialize TinyGPS++
+TinyGPSPlus gps;
+SoftwareSerial ss(GPS_RX, GPS_TX);
+
+// Max7219 initialization for 1 display
+LedControl lc = LedControl(DIN_PIN, CLK_PIN, CS_PIN, 1);
+
+// Define UTC offset for Cape Town (UTC + 2)
+int utcOffset = 2;
+
+void setup() {
+  Serial.begin(115200); // For debugging
+  ss.begin(9600);       // GPS module at 9600 baud rate
+
+  // Initialize Max7219 display
+  lc.shutdown(0, false);   // Wake up the display
+  lc.setIntensity(0, 8);   // Set brightness level
+  lc.clearDisplay(0);      // Clear the display
+
+  Serial.println("Waiting for GPS signal...");
+}
+
+void loop() {
+  while (ss.available() > 0) {
+    gps.encode(ss.read());  // Parse the incoming GPS data
+
+    // Check if GPS has valid time and date, and print to Serial Monitor
+    if (gps.time.isValid()) {
+      int localHour = gps.time.hour() + utcOffset;
+      if (localHour >= 24) {
+        localHour -= 24;  // Adjust if it's past midnight in local time
+      }
+
+      Serial.print("Local Time: ");
+      Serial.print(localHour); Serial.print(":");
+      Serial.print(gps.time.minute()); Serial.print(":");
+      Serial.println(gps.time.second());
+    } else {
+      Serial.println("Waiting for valid GPS time...");
+    }
+
+    if (gps.date.isValid()) {
+      Serial.print("Date: ");
+      Serial.print(gps.date.day()); Serial.print("/");
+      Serial.print(gps.date.month()); Serial.print("/");
+      Serial.println(gps.date.year());
+    } else {
+      Serial.println("Waiting for valid GPS date...");
+    }
+
+    // If GPS data is valid, display it on Max7219
+    if (gps.time.isValid() && gps.date.isValid()) {
+      displayTimeAndDateOnMax7219();
+    }
+  }
+}
+
+void displayTimeAndDateOnMax7219() {
+  int localHour = gps.time.hour() + utcOffset;
+  if (localHour >= 24) {
+    localHour -= 24;  // Adjust if it's past midnight in local time
+  }
+  
+  int minute = gps.time.minute();
+  int day = gps.date.day();
+  int month = gps.date.month();
+
+  // Display time (HHMM) on the first 4 digits
+  lc.setDigit(0, 7, localHour / 10, false);  // Tens of hours
+  lc.setDigit(0, 6, localHour % 10, false);  // Ones of hours
+  lc.setDigit(0, 5, minute / 10, false);  // Tens of minutes
+  lc.setDigit(0, 4, minute % 10, false);  // Ones of minutes
+
+  // Display date (DDMM) on the last 4 digits
+  lc.setDigit(0, 3, day / 10, false);  // Tens of day
+  lc.setDigit(0, 2, day % 10, false);  // Ones of day
+  lc.setDigit(0, 1, month / 10, false);  // Tens of month
+  lc.setDigit(0, 0, month % 10, false);  // Ones of month
+}
